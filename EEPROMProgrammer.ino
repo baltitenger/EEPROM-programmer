@@ -8,12 +8,11 @@ const int SHIFT_CLK = 3;
 const int SHIFT_LATCH = 4;
 
 const int WRITE_EN = 5; // Acive LOW
+const int OUTPUT_EN = A0; // Active LOW
 const int IO_START = 6;
 
-void setAddress(uint address, bool outputEnable) {
+void setAddress(uint address) {
     digitalWrite(SHIFT_LATCH, LOW);
-    address <<= 1;
-    address |= outputEnable; // active LOW
     shiftOut(SHIFT_DATA, SHIFT_CLK, MSBFIRST, address >> 8 & 0xFF);
     shiftOut(SHIFT_DATA, SHIFT_CLK, MSBFIRST, address & 0xFF);
     digitalWrite(SHIFT_LATCH, HIGH);
@@ -23,7 +22,8 @@ byte readByte(uint address) {
     for (int pin = IO_START + 7; pin >= IO_START; --pin) {
         pinMode(pin, INPUT);
     }
-    setAddress(address, false);
+    setAddress(address);
+    digitalWrite(OUTPUT_EN, LOW);
     byte res;
     for (int pin = IO_START + 7; pin >= IO_START; --pin) {
         res <<= 1;
@@ -33,10 +33,12 @@ byte readByte(uint address) {
 }
 
 void writeByte(uint address, byte toWrite) {
+    bool pollData = toWrite & 0x80;
     for (int pin = IO_START; pin <= IO_START + 7; ++pin) {
         pinMode(pin, OUTPUT);
     }
-    setAddress(address, true);
+    setAddress(address);
+    digitalWrite(OUTPUT_EN, HIGH);
     for (int pin = IO_START; pin <= IO_START + 7; ++pin) {
         digitalWrite(pin, toWrite & 1);
         toWrite >>=1;
@@ -44,7 +46,13 @@ void writeByte(uint address, byte toWrite) {
     digitalWrite(WRITE_EN, LOW);
     delayMicroseconds(1);
     digitalWrite(WRITE_EN, HIGH);
-    delay(10);
+
+    pinMode(IO_START + 7, INPUT);
+    digitalWrite(OUTPUT_EN, LOW);
+    while (pollData ^ digitalRead(IO_START + 7)) {
+        digitalWrite(OUTPUT_EN, HIGH);
+        digitalWrite(OUTPUT_EN, LOW);
+    }
 }
 
 void printContents(uint start, uint end) {
@@ -73,30 +81,24 @@ void setup() {
 
     pinMode(WRITE_EN, OUTPUT);
     digitalWrite(WRITE_EN, HIGH);
+    pinMode(OUTPUT_EN, OUTPUT);
+    digitalWrite(OUTPUT_EN, HIGH);
 
     Serial.begin(9600);
     Serial.println("Program start -----------------------------------------------------");
 
 
-    delay(1000);
-    int numBytes = 1000;
+    int numBytes = pow(2, 14);
     Serial.print("Write start: ");
     Serial.print(numBytes);
-    Serial.println("bytes...");
+    Serial.println(" bytes...");
     long starttime = micros();
     for (int i = 0; i < numBytes; ++i) {
-        writeByte(i, 255);
+        writeByte(i, i);
     }
-    Serial.print("Write finished. It took ");
+    Serial.print("Write took ");
     Serial.print(micros() - starttime);
     Serial.println(" microseconds.");
-    printContents(0, numBytes);
-
-/*
-    writeByte(0, 0x9A);
-    delay(1);
-    Serial.println(readByte(0));
- */
 
     Serial.println("\n");
 }
