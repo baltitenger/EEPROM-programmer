@@ -25,10 +25,13 @@ AVRDUDE_CONF = /etc/avrdude.conf
 
 BOARD_TAG   = nano
 BOARD_SUB   = atmega328
-MONITOR_PORT  = /dev/ttyUSB0
+MONITOR_PORT  = /dev/ttyUSB*
 
 ARDUINO_LIBS =
 ARDUINO_QUIET = 1
+
+MONITOR_CMD = /home/baltazar/bin/monitor
+MONITOR_BAUDRATE = 115200
 
 include /usr/share/arduino/Arduino.mk
 
