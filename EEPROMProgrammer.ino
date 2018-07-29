@@ -25,7 +25,7 @@ const byte MASK = 0x07; // PORTB
 
 void
 logSerial(const char *format, ...) {
-    PORTB = MASK;
+    PORTB = MASK & CHIP_EN;
     delayMicroseconds(3);
     static char buf[256];
     va_list argptr;
@@ -109,18 +109,20 @@ writeByte(uint address, byte toWrite) {
 
 uint
 writeBytes(uint start, const byte *data, uint len) {
-    PORTB = MASK & CHIP_EN;
     DDRD = 0xFF;
+    PORTB = MASK & CHIP_EN;
     uint end = min(start + len, ((start / 0x40) + 1) * 0x40);
     for (uint i = start; i < end; ++i) {
         setAddress(i);
         PORTD = *data++;
+        PORTB = MASK & CHIP_EN & WRITE_EN;
         delayMicroseconds(3);
-        DDRB = MASK & CHIP_EN & WRITE_EN;
+        PORTB = MASK & CHIP_EN;
         delayMicroseconds(3);
-        DDRB = MASK;
     }
-    pollData(*--data & 0x80);
+    if (pollData(*--data & 0x80)) {
+        logSerial("Error");
+    }
     return end - start;
 }
 
@@ -166,15 +168,14 @@ setup() {
     byte data[numBytes];
     byte *p = data;
     for (int i = 0; i < numBytes; ++i) {
-        *p++ = i + 1;
-        // writeByte(i, i + 1);
+        *p++ = i;
+        // writeByte(i, i + 2);
     }
 
     logSerial("Write start: %u bytes...\r\n", numBytes);
     long starttime = micros();
     writeBulk(0, data, numBytes);
     logSerial("Write took %u microseconds.\r\n", micros() - starttime);
-
 
     logSerial("\r\n");
     printContents(0, numBytes - 1);
@@ -190,6 +191,4 @@ step: 4
 void
 loop() {
 }
-
-
 
