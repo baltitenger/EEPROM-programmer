@@ -36,6 +36,42 @@ logSerial(const char *format, ...) {
     Serial.end();
 }
 
+size_t
+readSerial(byte *buf, uint count, uint timeout = 1000) {
+    delayMicroseconds(100);
+    PORTB = MASK & CHIP_EN;
+    Serial.begin(BAUDRATE);
+    Serial.setTimeout(timeout);
+    size_t readCount = Serial.readBytes(buf, count);
+    Serial.end();
+    return readCount;
+}
+
+void
+skipWhitespace(uint timeout = 1000) {
+    startTime = millis();
+    while (true) {
+        while (~Serial.available()) {
+            delayMicroseconds(1);
+            if (millis() - startTime >= timeout) {
+                return;
+            }
+        }
+        if (isspace(Serial.peek())) {
+            Serial.read();
+        } else {
+            return;
+        }
+    }
+}
+
+int
+readHexByte(uint timeout = 1000) {
+    byte buf[2];
+    readSerial(buf, 2, timeout);
+
+}
+
 void
 setAddress(uint address) {
     digitalWrite(SHIFT_LATCH, LOW);
@@ -122,7 +158,7 @@ writeBytes(uint start, const byte *data, uint len) {
     }
     if (pollData(*--data & 0x80)) {
         logSerial("Error");
-        return 0
+        return 0;
     }
     return end - start;
 }
