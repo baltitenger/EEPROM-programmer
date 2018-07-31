@@ -25,8 +25,8 @@ const byte MASK = 0x07; // PORTB
 
 void
 logSerial(const char *format, ...) {
+    delayMicroseconds(100);
     PORTB = MASK & CHIP_EN;
-    delayMicroseconds(3);
     static char buf[256];
     va_list argptr;
     va_start(argptr, format);
@@ -122,19 +122,19 @@ writeBytes(uint start, const byte *data, uint len) {
     }
     if (pollData(*--data & 0x80)) {
         logSerial("Error");
+        return 0
     }
     return end - start;
 }
 
 void
 writeBulk(uint start, const byte *data, uint len) {
-    uint written;
-    logSerial("Writing from %04x...\r\n", start);
-    while ((written = writeBytes(start, data, len)) < len) {
+    uint written = 0;
+    do {
         len -= written;
         start += written;
         logSerial("Writing from %04x...\r\n", start);
-    }
+    } while ((written = writeBytes(start, data, len)) < len); 
 }
 
 void
