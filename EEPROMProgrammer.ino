@@ -48,21 +48,17 @@ readSerial(byte *buf, uint count, uint timeout = 1000) {
 }
 
 void
-waitForSerial(uint timeout = 1000) {
-    unsigned long startTime = millis();
+waitForSerial() {
     while (!Serial.available()) {
         delayMicroseconds(1);
-        if (millis() - startTime >= timeout) {
-            throw "Timed out.";
-        }
     }
     return;
 }
 
 void
-skipWhitespace(uint timeout = 1000) {
+skipWhitespace() {
     while (true) {
-        waitForSerial(timeout);
+        waitForSerial();
         if (isspace(Serial.peek())) {
             Serial.read();
         } else {
@@ -71,52 +67,42 @@ skipWhitespace(uint timeout = 1000) {
     }
 }
 
-byte
-readHexByte(uint timeout = 1000) {
-    int res = 0;
-    for (int i = 0; i < 2; ++i) {
-        res <<= 4;
-        waitForSerial(timeout);
-        int b = Serial.read();
-        switch (b) {
-            case '0': case '1': case '2': case '3': case '4':
-            case '5': case '6': case '7': case '8': case '9':
-                res |= b - '0';
-                break;
-            case 'a': case 'b': case 'c': case 'd': case 'e': case 'f':
-                res |= b - 'a' + 10;
-                break;
-            case 'A': case 'B': case 'C': case 'D': case 'E': case 'F':
-                res |= b - 'A' + 10;
-                break;
-            default:
-                throw "Invalid HEX!";
-        }
+int
+hexToBin(const char hex) {
+    if ('0' <= hex && hex <= '9') {
+        return hex - '0';
+    } else if ('a' <= hex && hex <= 'f') {
+        return hex - 'a' + 10;
+    } else if ('A' <= hex && hex <= 'F') {
+        return hex - 'A' + 10;
+    } else {
+        return -1;
     }
-    return res;
 }
 
 int
-readHexBytes(uint count, bool allowShorter = false, uint timeout = 1000) {
+readHex(uint maxSize) {
     int res = 0;
-    for (uint i = 0; i < count; ++i) {
-        if (allowShorter) {
-            waitForSerial(timeout);
-            if (isspace(Serial.peek())) {
-                break;
-            }
+    for (uint i = 0; i < maxSize; ++i) {
+        waitForSerial();
+        if (isspace(Serial.peek())) {
+            break;
         }
-        res <<= 8;
-        res |= readHexByte(timeout);
+        res <<= 4;
+        int next = hexToBin(Serial.read());
+        if (next == -1) {
+            return -1;
+        }
+        res |= next;
     }
     return res;
 }
 
 String
-readWord(uint timeout = 1000) {
+readWord() {
     String res = "";
     while (true) {
-        waitForSerial(timeout);
+        waitForSerial();
         if (isspace(Serial.peek())) {
             break;
         } else {
@@ -247,19 +233,29 @@ printContents(uint start, uint end) {
     logSerial("\r\n");
 }
 
-void
-actionLoad(uint timeout = 1000) {
-    skipWhitespace(timeout);
-    uint start = readHexBytes(timeout);
-    skipWhitespace(timeout);
-    uint len = readHexBytes(timeout);
+bool
+actionLoad() {
+    skipWhitespace();
+    uint start = readHex(8);
+    if (start == -1) {
+        return false;
+    }
+    skipWhitespace();
+    uint len = readHex(8);
+    if (len == -1) {
+        return false;
+    }
     do {
         uint lenPage = min(len, (start / 0x40 + 1) * 0x40 - start);
         byte page[lenPage];
         byte *p = page;
         for (uint i = 0; i < lenPage; ++i) {
-            skipWhitespace(timeout);
-            *p++ = readHexByte(timeout);
+            skipWhitespace();
+            int next = readHex(2);
+            if (next == -1) {
+                return false;
+            }
+            *p++ = next;
         }
         logSerial("\r\nWriting from %04x...\r\n", start);
         if (writeBytes(start, page, lenPage) == 0) {
@@ -273,24 +269,24 @@ actionLoad(uint timeout = 1000) {
 }
 
 void
-actionPrint(uint timeout = 1000) {
-    skipWhitespace(timeout);
-    uint start = readHexBytes(timeout);
-    skipWhitespace(timeout);
-    uint len = readHexBytes(timeout);
+actionPrint() {
+    skipWhitespace();
+    uint start = readHex(8);
+    skipWhitespace();
+    uint len = readHex(8);
     printContents(start, start + len);
 }
 
 void
-doStuff(uint timeout = 1000) {
+doStuff() {
     PORTB = MASK & CHIP_EN;
     Serial.begin(BAUDRATE);
-    Serial.setTimeout(timeout);
+    Serial.setTimeout(0x7FFFFFFF);
     String action = Serial.readStringUntil('\r');
     if (action == "LOAD") {
-        actionLoad(timeout);
+        actionLoad();
     } else if (action == "PRINT") {
-        actionPrint(timeout);
+        actionPrint();
     } else if (action == "EXIT") {
         Serial.println("Bye!");
         Serial.end();
@@ -307,10 +303,6 @@ setup() {
     PORTB = MASK; // WE = 1, OE = 1; CE = 1, leave shift register pins as 0
 
     logSerial("Program start -----------------------------------------------------\r\n");
-
-    while (true) {
-        doStuff(1000000);
-    }
 
 /*
     int numBytes = 256;
@@ -340,5 +332,6 @@ step: 4
 
 void
 loop() {
+    doStuff();
 }
 
