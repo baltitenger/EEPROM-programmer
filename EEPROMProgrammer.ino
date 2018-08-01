@@ -48,15 +48,21 @@ readSerial(byte *buf, uint count, uint timeout = 1000) {
 }
 
 void
-skipWhitespace(uint timeout = 1000) {
-    startTime = millis();
-    while (true) {
-        while (~Serial.available()) {
-            delayMicroseconds(1);
-            if (millis() - startTime >= timeout) {
-                return;
-            }
+waitForSerial(uint timeout = 1000) {
+    unsigned long startTime = millis();
+    while (!Serial.available()) {
+        delayMicroseconds(1);
+        if (millis() - startTime >= timeout) {
+            throw "Timed out.";
         }
+    }
+    return;
+}
+
+void
+skipWhitespace(uint timeout = 1000) {
+    while (true) {
+        waitForSerial(timeout);
         if (isspace(Serial.peek())) {
             Serial.read();
         } else {
@@ -65,11 +71,59 @@ skipWhitespace(uint timeout = 1000) {
     }
 }
 
-int
+byte
 readHexByte(uint timeout = 1000) {
-    byte buf[2];
-    readSerial(buf, 2, timeout);
+    int res = 0;
+    for (int i = 0; i < 2; ++i) {
+        res <<= 4;
+        waitForSerial(timeout);
+        int b = Serial.read();
+        switch (b) {
+            case '0': case '1': case '2': case '3': case '4':
+            case '5': case '6': case '7': case '8': case '9':
+                res |= b - '0';
+                break;
+            case 'a': case 'b': case 'c': case 'd': case 'e': case 'f':
+                res |= b - 'a' + 10;
+                break;
+            case 'A': case 'B': case 'C': case 'D': case 'E': case 'F':
+                res |= b - 'A' + 10;
+                break;
+            default:
+                throw "Invalid HEX!";
+        }
+    }
+    return res;
+}
 
+int
+readHexBytes(uint count, bool allowShorter = false, uint timeout = 1000) {
+    int res = 0;
+    for (uint i = 0; i < count; ++i) {
+        if (allowShorter) {
+            waitForSerial(timeout);
+            if (isspace(Serial.peek())) {
+                break;
+            }
+        }
+        res <<= 8;
+        res |= readHexByte(timeout);
+    }
+    return res;
+}
+
+String
+readWord(uint timeout = 1000) {
+    String res = "";
+    while (true) {
+        waitForSerial(timeout);
+        if (isspace(Serial.peek())) {
+            break;
+        } else {
+            res.concat(Serial.read());
+        }
+    }
+    return res;
 }
 
 void
@@ -157,7 +211,6 @@ writeBytes(uint start, const byte *data, uint len) {
         delayMicroseconds(3);
     }
     if (pollData(*--data & 0x80)) {
-        logSerial("Error");
         return 0;
     }
     return end - start;
@@ -191,6 +244,61 @@ printContents(uint start, uint end) {
         p += sprintf(p, " %02x", readByte(i));
     }
     logSerial(buf);
+    logSerial("\r\n");
+}
+
+void
+actionLoad(uint timeout = 1000) {
+    skipWhitespace(timeout);
+    uint start = readHexBytes(timeout);
+    skipWhitespace(timeout);
+    uint len = readHexBytes(timeout);
+    do {
+        uint lenPage = min(len, (start / 0x40 + 1) * 0x40 - start);
+        byte page[lenPage];
+        byte *p = page;
+        for (uint i = 0; i < lenPage; ++i) {
+            skipWhitespace(timeout);
+            *p++ = readHexByte(timeout);
+        }
+        logSerial("\r\nWriting from %04x...\r\n", start);
+        if (writeBytes(start, page, lenPage) == 0) {
+            logSerial("Error.\r\n");
+            return;
+        }
+        len -= lenPage;
+        start += lenPage;
+    } while (len > 0); 
+    logSerial("Done.\r\n");
+}
+
+void
+actionPrint(uint timeout = 1000) {
+    skipWhitespace(timeout);
+    uint start = readHexBytes(timeout);
+    skipWhitespace(timeout);
+    uint len = readHexBytes(timeout);
+    printContents(start, start + len);
+}
+
+void
+doStuff(uint timeout = 1000) {
+    PORTB = MASK & CHIP_EN;
+    Serial.begin(BAUDRATE);
+    Serial.setTimeout(timeout);
+    String action = Serial.readStringUntil('\r');
+    if (action == "LOAD") {
+        actionLoad(timeout);
+    } else if (action == "PRINT") {
+        actionPrint(timeout);
+    } else if (action == "EXIT") {
+        Serial.println("Bye!");
+        Serial.end();
+        exit(0);
+    } else {
+        Serial.println("Invalid action!");
+    }
+    Serial.end();
 }
 
 void
@@ -200,6 +308,11 @@ setup() {
 
     logSerial("Program start -----------------------------------------------------\r\n");
 
+    while (true) {
+        doStuff(1000000);
+    }
+
+/*
     int numBytes = 256;
     byte data[numBytes];
     byte *p = data;
@@ -216,6 +329,7 @@ setup() {
     logSerial("\r\n");
     printContents(0, numBytes - 1);
     logSerial("\r\n");
+ */
 }
 
 /*
