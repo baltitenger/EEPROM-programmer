@@ -106,7 +106,7 @@ readWord() {
         if (isspace(Serial.peek())) {
             break;
         } else {
-            res.concat(Serial.read());
+            res.concat((char) Serial.read());
         }
     }
     return res;
@@ -236,12 +236,12 @@ printContents(uint start, uint end) {
 bool
 actionLoad() {
     skipWhitespace();
-    uint start = readHex(8);
+    int start = readHex(8);
     if (start == -1) {
         return false;
     }
     skipWhitespace();
-    uint len = readHex(8);
+    int len = readHex(8);
     if (len == -1) {
         return false;
     }
@@ -260,23 +260,32 @@ actionLoad() {
         logSerial("\r\nWriting from %04x...\r\n", start);
         if (writeBytes(start, page, lenPage) == 0) {
             logSerial("Error.\r\n");
-            return;
+            return false;
         }
         len -= lenPage;
         start += lenPage;
     } while (len > 0); 
     logSerial("Done.\r\n");
+    return true;
 }
 
-void
+bool
 actionPrint() {
     skipWhitespace();
-    uint start = readHex(8);
+    int start = readHex(8);
+    if (start == -1) {
+        return false;
+    }
     skipWhitespace();
-    uint len = readHex(8);
+    int len = readHex(8);
+    if (len == -1) {
+        return false;
+    }
     printContents(start, start + len);
+    return true;
 }
 
+#if 0
 void
 doStuff() {
     PORTB = MASK & CHIP_EN;
@@ -296,32 +305,14 @@ doStuff() {
     }
     Serial.end();
 }
+#endif
 
 void
 setup() {
     DDRB = 0xFF; // Set pin mode to output
-    PORTB = MASK; // WE = 1, OE = 1; CE = 1, leave shift register pins as 0
+    PORTB = MASK & CHIP_EN; // WE = 1, OE = 1; CE = 1, leave shift register pins as 0
 
-    logSerial("Program start -----------------------------------------------------\r\n");
-
-/*
-    int numBytes = 256;
-    byte data[numBytes];
-    byte *p = data;
-    for (int i = 0; i < numBytes; ++i) {
-        *p++ = i;
-        // writeByte(i, i + 2);
-    }
-
-    logSerial("Write start: %u bytes...\r\n", numBytes);
-    long starttime = micros();
-    writeBulk(0, data, numBytes);
-    logSerial("Write took %u microseconds.\r\n", micros() - starttime);
-
-    logSerial("\r\n");
-    printContents(0, numBytes - 1);
-    logSerial("\r\n");
- */
+    logSerial("\r\nProgram start -----------------------------------------------------\r\n");
 }
 
 /*
@@ -332,6 +323,21 @@ step: 4
 
 void
 loop() {
-    doStuff();
+    PORTB = MASK & CHIP_EN;
+    Serial.begin(BAUDRATE);
+    Serial.setTimeout(0x7FFFFFFF);
+    String action = readWord();
+    if (action == "LOAD" || action == "load") {
+        actionLoad();
+    } else if (action == "PRINT" || action == "print") {
+        actionPrint();
+    } else if (action == "EXIT" || action == "exit") {
+        Serial.println("Bye!");
+        Serial.end();
+        exit(0);
+    } else {
+        Serial.println("Invalid action!");
+    }
+    Serial.end();
 }
 
