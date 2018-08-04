@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include "crc.hpp"
 
 using uint = unsigned int;
 
