@@ -4,7 +4,6 @@
 namespace crcs {
 
 using byte = unsigned char;
-using std::size_t;
 
 constexpr const byte Crc8Gen = 0x1d;
 

@@ -60,7 +60,7 @@ struct LookupTable {
 
 constexpr const byte Crc8Gen = 0x1d;
 
-constexpr byte
+static constexpr byte
 calcCrc8TableElem(byte d) {
   for (size_t b = 0; b < 8; ++b) {
     if ((d & 0x80)) {
@@ -74,7 +74,7 @@ calcCrc8TableElem(byte d) {
 }
 
 template <size_t... Is_>
-constexpr LookupTable
+static constexpr LookupTable
 createCrc8Table(IndexSeq<Is_...>) {
   return { calcCrc8TableElem(Is_)... };
 }

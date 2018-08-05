@@ -1,5 +1,5 @@
 #include <stdarg.h>
-#include "crc.hpp"
+#include "crcs.hpp"
 
 using uint = unsigned int;
 
@@ -248,7 +248,7 @@ actionLoad() {
     }
     do {
         uint lenPage = min(len, (start / 0x40 + 1) * 0x40 - start);
-        byte page[lenPage];
+        byte page[64];
         byte *p = page;
         for (uint i = 0; i < lenPage; ++i) {
             skipWhitespace();
@@ -257,6 +257,13 @@ actionLoad() {
                 return false;
             }
             *p++ = next;
+        }
+        skipWhitespace();
+        byte crc = readHex(2);
+        byte ccrc = crcs::crc8(page, page + lenPage);
+        if (crc != ccrc) {
+            logSerial("\r\nError!\r\n");
+            return false;
         }
         logSerial("\r\nWriting from %04x...\r\n", start);
         if (writeBytes(start, page, lenPage) == 0) {
@@ -282,31 +289,9 @@ actionPrint() {
     if (len == -1) {
         return false;
     }
-    printContents(start, start + len);
+    printContents(start, start + len -1);
     return true;
 }
-
-#if 0
-void
-doStuff() {
-    PORTB = MASK & CHIP_EN;
-    Serial.begin(BAUDRATE);
-    Serial.setTimeout(0x7FFFFFFF);
-    String action = Serial.readStringUntil('\r');
-    if (action == "LOAD") {
-        actionLoad();
-    } else if (action == "PRINT") {
-        actionPrint();
-    } else if (action == "EXIT") {
-        Serial.println("Bye!");
-        Serial.end();
-        exit(0);
-    } else {
-        Serial.println("Invalid action!");
-    }
-    Serial.end();
-}
-#endif
 
 void
 setup() {
