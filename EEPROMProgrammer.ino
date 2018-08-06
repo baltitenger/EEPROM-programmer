@@ -248,11 +248,16 @@ actionLoad() {
         return false;
     }
     ccrc = crcs::crc8be32(len, ccrc);
+    skipWhitespace();
     byte crc = readHex(2);
     if (crc == ccrc) {
-        logSerial("OK");
+        Serial.println("\r\nOK. Address and length set.");
     } else {
-        logSerial("\r\nError!\r\n");
+        Serial.print("\r\nError! Mismatching crc (");
+        Serial.print(crc);
+        Serial.print(" != ");
+        Serial.print(ccrc);
+        Serial.println(")");
         return false;
     }
     do {
@@ -271,21 +276,31 @@ actionLoad() {
         byte ccrc = crcs::crc8(page, page + lenPage);
         byte crc = readHex(2);
         if (crc == ccrc) {
-            logSerial("\r\nOK, writing %0x bytes of data starting from %04x...\r\n", len, start);
+            Serial.print("\r\nOK, writing ");
+            Serial.print(len);
+            Serial.print(" bytes of data starting from ");
+            Serial.print(start, HEX);
+            Serial.println("...");
         } else {
-            logSerial("\r\nError!\r\n");
+            Serial.print("\r\nError! Mismatching crc (");
+            Serial.print(crc);
+            Serial.print(" != ");
+            Serial.print(ccrc);
+            Serial.println(")");
             return false;
         }
+        Serial.end();
         if (writeBytes(start, page, lenPage) == 0) {
-            logSerial("Error.\r\n");
+            Serial.begin(BAUDRATE);
+            Serial.println("Error! Write timed out.");
             return false;
-        } else {
-            logSerial("OK\r\n");
         }
+        Serial.begin(BAUDRATE);
+        Serial.println("OK. Write complete.");
         len -= lenPage;
         start += lenPage;
     } while (len > 0); 
-    logSerial("Done.\r\n");
+    Serial.println("Done.");
     return true;
 }
 
@@ -334,7 +349,7 @@ loop() {
         Serial.end();
         exit(0);
     } else {
-        Serial.println("Invalid action!");
+        Serial.println("Error! Invalid action.");
     }
     Serial.end();
 }
