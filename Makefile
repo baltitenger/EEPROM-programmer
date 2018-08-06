@@ -33,6 +33,8 @@ ARDUINO_QUIET = 1
 MONITOR_CMD = /home/baltazar/bin/monitor
 MONITOR_BAUDRATE = 115200
 
+CXXFLAGS_STD = -std=gnu++14 -fno-threadsafe-statics -flto
+
 include /usr/share/arduino/Arduino.mk
 
 
