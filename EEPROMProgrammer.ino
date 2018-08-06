@@ -1,5 +1,5 @@
 #include <stdarg.h>
-#include "crcs.hpp"
+#include "lib/crcs.hpp"
 
 using uint = unsigned int;
 
@@ -237,13 +237,22 @@ printContents(uint start, uint end) {
 bool
 actionLoad() {
     skipWhitespace();
-    int start = readHex(8);
+    long int start = readHex(8);
     if (start == -1) {
         return false;
     }
+    byte ccrc = crcs::crc8be32(start);
     skipWhitespace();
-    int len = readHex(8);
+    long int len = readHex(8);
     if (len == -1) {
+        return false;
+    }
+    ccrc = crcs::crc8be32(len, ccrc);
+    byte crc = readHex(2);
+    if (crc == ccrc) {
+        logSerial("OK");
+    } else {
+        logSerial("\r\nError!\r\n");
         return false;
     }
     do {
@@ -259,16 +268,19 @@ actionLoad() {
             *p++ = next;
         }
         skipWhitespace();
-        byte crc = readHex(2);
         byte ccrc = crcs::crc8(page, page + lenPage);
-        if (crc != ccrc) {
+        byte crc = readHex(2);
+        if (crc == ccrc) {
+            logSerial("\r\nOK, writing %0x bytes of data starting from %04x...\r\n", len, start);
+        } else {
             logSerial("\r\nError!\r\n");
             return false;
         }
-        logSerial("\r\nWriting from %04x...\r\n", start);
         if (writeBytes(start, page, lenPage) == 0) {
             logSerial("Error.\r\n");
             return false;
+        } else {
+            logSerial("OK\r\n");
         }
         len -= lenPage;
         start += lenPage;
@@ -280,12 +292,12 @@ actionLoad() {
 bool
 actionPrint() {
     skipWhitespace();
-    int start = readHex(8);
+    long int start = readHex(8);
     if (start == -1) {
         return false;
     }
     skipWhitespace();
-    int len = readHex(8);
+    long int len = readHex(8);
     if (len == -1) {
         return false;
     }
@@ -297,8 +309,7 @@ void
 setup() {
     DDRB = 0xFF; // Set pin mode to output
     PORTB = MASK & CHIP_EN; // WE = 1, OE = 1; CE = 1, leave shift register pins as 0
-
-    logSerial("\r\nProgram start -----------------------------------------------------\r\n");
+    logSerial("\r\nResetting...\r\n");
 }
 
 /*
@@ -312,6 +323,7 @@ loop() {
     PORTB = MASK & CHIP_EN;
     Serial.begin(BAUDRATE);
     Serial.setTimeout(0x7FFFFFFF);
+    Serial.println("Ready");
     String action = readWord();
     if (action == "LOAD" || action == "load") {
         actionLoad();
