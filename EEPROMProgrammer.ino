@@ -24,28 +24,44 @@ const byte OUTPUT_EN = ~0x02;
 const byte CHIP_EN = ~0x04;
 const byte MASK = 0x07; // PORTB
 
-void
-logSerial(const char *format, ...) {
+static bool isSerialOn = false;
+
+static bool
+startSerial() {
+    if (isSerialOn) {
+        return true;
+    }
+    isSerialOn = true;
     delayMicroseconds(100);
     PORTB = MASK & CHIP_EN;
+    delayMicroseconds(100);
+	Serial.begin(BAUDRATE);
+    return false;
+}
+
+static bool
+stopSerial() {
+    if (!isSerialOn) {
+        return false;
+    }
+    isSerialOn = false;
+    Serial.end();
+    delayMicroseconds(100);
+    return true;
+}
+
+static void
+logSerial(const char *format, ...) {
     static char buf[256];
+
     va_list argptr;
     va_start(argptr, format);
     vsnprintf(buf, sizeof(buf), format, argptr);
-    Serial.begin(BAUDRATE);
+    bool wasSerialOn = startSerial();
     Serial.print(buf);
-    Serial.end();
-}
-
-size_t
-readSerial(byte *buf, uint count, uint timeout = 1000) {
-    delayMicroseconds(100);
-    PORTB = MASK & CHIP_EN;
-    Serial.begin(BAUDRATE);
-    Serial.setTimeout(timeout);
-    size_t readCount = Serial.readBytes(buf, count);
-    Serial.end();
-    return readCount;
+    if (!wasSerialOn) {
+        stopSerial();
+    }
 }
 
 void
@@ -123,18 +139,26 @@ setAddress(uint address) {
 
 byte
 readByte(uint address) {
+    bool wasSerialOn = stopSerial();
     DDRD = 0x00; // Set IO pins as input
     setAddress(address);
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
     delayMicroseconds(3);
+	if (wasSerialOn) {
+        startSerial();
+	}
     return PIND;
 }
 
 bool
 pollData(byte data) {
+    delayMicroseconds(100);
+	delay(10);
+	return false;
     DDRD = 0x80; // Set IO 7 as input
+    // ??? pinMode(7, INPUT);
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
-    delayMicroseconds(200);
+    delayMicroseconds(100);
     long pollStart = micros();
     while (data ^ digitalRead(7)) {
         PORTB = MASK & CHIP_EN;
@@ -170,23 +194,9 @@ pollToggle() {
     }
 }
 
-void
-writeByte(uint address, byte toWrite) {
-    DDRD = 0xFF;
-    PORTB = MASK & CHIP_EN;
-    setAddress(address);
-    PORTD = toWrite;
-    PORTB = MASK & CHIP_EN & WRITE_EN;
-    delayMicroseconds(3);
-    PORTB = MASK & CHIP_EN;
-    delayMicroseconds(3);
-    if (pollData(toWrite & 0x80)) {
-        logSerial("Bailing out of writing to %04x\r\n", address);
-    }
-}
-
 uint
 writeBytes(uint start, const byte *data, uint len) {
+    bool wasSerialOn = stopSerial();
     DDRD = 0xFF;
     PORTB = MASK & CHIP_EN;
     uint end = min(start + len, ((start / 0x40) + 1) * 0x40);
@@ -199,7 +209,10 @@ writeBytes(uint start, const byte *data, uint len) {
         delayMicroseconds(3);
     }
     if (pollData(*--data & 0x80)) {
-        return 0;
+        end = start; // failure
+    }
+    if (wasSerialOn) {
+      startSerial();
     }
     return end - start;
 }
@@ -216,6 +229,7 @@ writeBulk(uint start, const byte *data, uint len) {
 
 void
 printContents(uint start, uint end) {
+    bool wasSerialOn = stopSerial();
     //start = start / 16 * 16;
     end = (end / 16 + 1) * 16;
     char buf[80];
@@ -233,10 +247,14 @@ printContents(uint start, uint end) {
     }
     logSerial(buf);
     logSerial("\r\n");
+	if (wasSerialOn) {
+        startSerial();
+	}
 }
 
 bool
 actionLoad() {
+    startSerial();
     skipWhitespace();
     long int start = readHex(8);
     if (start == -1) {
@@ -252,13 +270,9 @@ actionLoad() {
     skipWhitespace();
     byte crc = readHex(2);
     if (crc == ccrc) {
-        Serial.println("\r\nOK. Start address and length set.");
+        logSerial("\r\nOK. Start address and length set.\n");
     } else {
-        Serial.print("\r\nError! Mismatching crc (");
-        Serial.print(crc);
-        Serial.print(" != ");
-        Serial.print(ccrc);
-        Serial.println(")");
+        logSerial("\r\nError! Mismatching crc (%02x != %02x)\n", crc, ccrc);
         return false;
     }
     do {
@@ -277,37 +291,26 @@ actionLoad() {
         byte ccrc = crcs::crc8(page, page + lenPage);
         byte crc = readHex(2);
         if (crc != ccrc) {
-            Serial.print("\r\nError! Mismatching crc (");
-            Serial.print(crc);
-            Serial.print(" != ");
-            Serial.print(ccrc);
-            Serial.println(")");
+            logSerial("\r\nError! Mismatching crc (%02x != %02x)\n", crc, ccrc);
             return false;
         }
-        Serial.println();
-        Serial.end();
         if (writeBytes(start, page, lenPage) == 0) {
             delayMicroseconds(300);
-            Serial.begin(BAUDRATE);
-            Serial.println("Error! Write timed out.");
+            logSerial("Error! Write timed out.\n");
             return false;
         }
         delayMicroseconds(300);
-        Serial.begin(BAUDRATE);
-        Serial.print("\r\nOK, written ");
-        Serial.print(lenPage);
-        Serial.print(" bytes of data starting from ");
-        Serial.print(start, HEX);
-        Serial.println(".");
+        logSerial("\r\nOK, written %d bytes of data starting from %08x.\n", lenPage, start);
         len -= lenPage;
         start += lenPage;
     } while (len > 0); 
-    Serial.println("Done.");
+    logSerial("\r\nDone.\n");
     return true;
 }
 
 bool
 actionPrint() {
+    startSerial();
     skipWhitespace();
     long int start = readHex(8);
     if (start == -1) {
@@ -326,6 +329,7 @@ void
 setup() {
     DDRB = 0xFF; // Set pin mode to output
     PORTB = MASK & CHIP_EN; // WE = 1, OE = 1; CE = 1, leave shift register pins as 0
+    startSerial();
     logSerial("\r\nResetting...\r\n");
 }
 
@@ -338,21 +342,20 @@ step: 4
 void
 loop() {
     PORTB = MASK & CHIP_EN;
-    Serial.begin(BAUDRATE);
-    Serial.setTimeout(0x7FFFFFFF);
-    Serial.println("Ready");
+    startSerial();
+    logSerial("Ready\n");
+    skipWhitespace();
     String action = readWord();
     if (action == "LOAD" || action == "load") {
         actionLoad();
     } else if (action == "PRINT" || action == "print") {
         actionPrint();
     } else if (action == "EXIT" || action == "exit") {
-        Serial.println("Bye!");
-        Serial.end();
+        logSerial("Bye!\n");
+        stopSerial();
         exit(0);
     } else {
-        Serial.println("Error! Invalid action.");
+        logSerial("Error! Invalid action.\n");
     }
-    Serial.end();
 }
 

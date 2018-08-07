@@ -5,7 +5,7 @@ namespace crcs {
 
 constexpr const byte Crc8Gen = 0x1d;
 
-static constexpr byte
+static byte
 crc8(byte b, byte crc = 0x00) {
   crc ^= b;
   for (auto b = 0; b < 8; ++b) {
@@ -19,7 +19,7 @@ crc8(byte b, byte crc = 0x00) {
   return crc;
 }
 
-static constexpr byte
+static byte
 crc8be32(uint32_t u, byte crc = 0x00) {
   crc = crc8(static_cast<byte>((u >> 24) & 0xff), crc);
   crc = crc8(static_cast<byte>((u >> 16) & 0xff), crc);
@@ -29,7 +29,7 @@ crc8be32(uint32_t u, byte crc = 0x00) {
 }
 
 template <typename It>
-static constexpr byte
+static byte
 crc8(It begin, It end, byte crc = 0x00) {
   while (begin != end) {
     crc = crc8(*begin++, crc);
@@ -39,7 +39,7 @@ crc8(It begin, It end, byte crc = 0x00) {
 
 
 template <size_t N>
-static inline constexpr byte
+static inline byte
 crc8(const byte(&buf)[N], byte crc = 0x00) {
   return crc8(buf, buf + N, crc);
 }
