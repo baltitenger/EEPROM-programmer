@@ -1,3 +1,6 @@
+// vim: set filetype=cpp:
+// vim: set syntax=arduino:
+
 #include <stdarg.h>
 #include "lib/crcs.hpp"
 
@@ -33,9 +36,8 @@ startSerial() {
         return true;
     }
     isSerialOn = true;
-    delayMicroseconds(100);
     PORTB = MASK & CHIP_EN;
-    delayMicroseconds(100);
+    delayMicroseconds(500);
     Serial.begin(BAUDRATE);
     return false;
 }
@@ -47,14 +49,13 @@ stopSerial() {
     }
     isSerialOn = false;
     Serial.end();
-    delayMicroseconds(100);
+    delayMicroseconds(500);
     return true;
 }
 
 static void
 logSerial(const char *format, ...) {
     static char buf[256];
-
     va_list argptr;
     va_start(argptr, format);
     vsnprintf(buf, sizeof(buf), format, argptr);
@@ -153,12 +154,9 @@ readByte(uint address) {
 
 bool
 pollData(byte data) {
-    delayMicroseconds(100);
     DDRD = 0x80; // Set IO 7 as input
     // ??? pinMode(7, INPUT);
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
-    delayMicroseconds(WRITE_CYCLE_MICROS);
-    return;
     long pollStart = micros();
     while (data ^ digitalRead(7)) {
         PORTB = MASK & CHIP_EN;
@@ -199,7 +197,7 @@ writeBytes(uint start, const byte *data, uint len) {
     bool wasSerialOn = stopSerial();
     DDRD = 0xFF;
     PORTB = MASK & CHIP_EN;
-    uint end = min(start + len, ((start / 0x40) + 1) * 0x40);
+    uint end = min(start + len, (start / 0x40 + 1) * 0x40);
     for (uint i = start; i != end; ++i) {
         setAddress(i);
         PORTD = *data++;
@@ -228,23 +226,24 @@ writeBulk(uint start, const byte *data, uint len) {
 }
 
 void
-printContents(uint start, uint end) {
+printContents(uint start, uint len) {
     bool wasSerialOn = stopSerial();
-    //start = start / 16 * 16;
-    end = (end / 16 + 1) * 16;
+    start &= ~ 0x0f;
+    uint end = start + ((len + 15) & ~ 0x0f);
     char buf[80];
     buf[0] = 0;
     char *p = buf;
-    for (uint i = start; i != end; ++i) {
-        if (i % 16 == 0) {
+    do {
+        if (start % 16 == 0) {
             logSerial(buf);
             p = buf;
-            p += sprintf(p, "\r\n%08x:", i);
-        } else if (i % 8 == 0) {
+            p += sprintf(p, "\r\n%08x:", start);
+        } else if (start % 8 == 0) {
             *p++ = ' ';
         }
-        p += sprintf(p, " %02x", readByte(i));
-    }
+        p += sprintf(p, " %02x", readByte(start));
+        ++start;
+    } while (start != end);
     logSerial(buf);
     logSerial("\r\n");
     if (wasSerialOn) {
@@ -256,13 +255,13 @@ bool
 actionLoad() {
     startSerial();
     skipWhitespace();
-    long int start = readHex(8);
+    int start = readHex(4);
     if (start == -1) {
         return false;
     }
     byte ccrc = crcs::crc8be32(start);
     skipWhitespace();
-    long int len = readHex(8);
+    int len = readHex(4);
     if (len == -1) {
         return false;
     }
@@ -295,11 +294,9 @@ actionLoad() {
             return false;
         }
         if (writeBytes(start, page, lenPage) == 0) {
-            delayMicroseconds(300);
             logSerial("\r\nError! Write timed out.\n");
             return false;
         }
-        delayMicroseconds(300);
         logSerial("\r\nOK, written %d bytes of data starting from %08x.\n", lenPage, start);
         len -= lenPage;
         start += lenPage;
@@ -321,7 +318,7 @@ actionPrint() {
     if (len == -1) {
         return false;
     }
-    printContents(start, start + len -1);
+    printContents(start, len);
     return true;
 }
 
