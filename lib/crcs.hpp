@@ -28,6 +28,13 @@ crc8be32(uint32_t u, byte crc = 0x00) {
   return crc;
 }
 
+static byte
+crc8be16(uint16_t u, byte crc = 0x00) {
+  crc = crc8(static_cast<byte>((u >> 8) & 0xff), crc);
+  crc = crc8(static_cast<byte>(u & 0xff), crc);
+  return crc;
+}
+
 template <typename It>
 static byte
 crc8(It begin, It end, byte crc = 0x00) {

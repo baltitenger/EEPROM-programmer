@@ -259,13 +259,13 @@ actionLoad() {
     if (start == -1) {
         return false;
     }
-    byte ccrc = crcs::crc8be32(start);
+    byte ccrc = crcs::crc8be16(start);
     skipWhitespace();
     int len = readHex(4);
     if (len == -1) {
         return false;
     }
-    ccrc = crcs::crc8be32(len, ccrc);
+    ccrc = crcs::crc8be16(len, ccrc);
     skipWhitespace();
     byte crc = readHex(2);
     if (crc == ccrc) {
