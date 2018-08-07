@@ -2,6 +2,7 @@
 #include "lib/crcs.hpp"
 
 using uint = unsigned int;
+using ulong = unsigned long;
 
 // 2 shift registers used for address pins and output enable
 const int SHIFT_LATCH = 11;
@@ -14,7 +15,7 @@ const int SHIFT_DATA = 13;
 
 // Write enable, Output enable, Chip enable: set PORTB, always set higher bits to 0
 
-const int BAIL_OUT_MILLIS = 10000;
+const long WRITE_CYCLE_MICROS = 10000;
 const int TOGGLE_SAFE = 5;
 
 const long int BAUDRATE = 115200;
@@ -35,7 +36,7 @@ startSerial() {
     delayMicroseconds(100);
     PORTB = MASK & CHIP_EN;
     delayMicroseconds(100);
-	Serial.begin(BAUDRATE);
+    Serial.begin(BAUDRATE);
     return false;
 }
 
@@ -97,9 +98,9 @@ hexToBin(const char hex) {
     }
 }
 
-int
+long
 readHex(uint maxSize) {
-    int res = 0;
+    long res = 0;
     for (uint i = 0; i < maxSize; ++i) {
         waitForSerial();
         if (isspace(Serial.peek())) {
@@ -144,27 +145,26 @@ readByte(uint address) {
     setAddress(address);
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
     delayMicroseconds(3);
-	if (wasSerialOn) {
+    if (wasSerialOn) {
         startSerial();
-	}
+    }
     return PIND;
 }
 
 bool
 pollData(byte data) {
     delayMicroseconds(100);
-	delay(10);
-	return false;
     DDRD = 0x80; // Set IO 7 as input
     // ??? pinMode(7, INPUT);
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
-    delayMicroseconds(100);
+    delayMicroseconds(WRITE_CYCLE_MICROS);
+    return;
     long pollStart = micros();
     while (data ^ digitalRead(7)) {
         PORTB = MASK & CHIP_EN;
         delayMicroseconds(3);
         PORTB = MASK & CHIP_EN & OUTPUT_EN;
-        if (micros() - pollStart > BAIL_OUT_MILLIS) {
+        if (micros() - pollStart > WRITE_CYCLE_MICROS) {
             return true;
         }
         delayMicroseconds(3);
@@ -200,7 +200,7 @@ writeBytes(uint start, const byte *data, uint len) {
     DDRD = 0xFF;
     PORTB = MASK & CHIP_EN;
     uint end = min(start + len, ((start / 0x40) + 1) * 0x40);
-    for (uint i = start; i < end; ++i) {
+    for (uint i = start; i != end; ++i) {
         setAddress(i);
         PORTD = *data++;
         PORTB = MASK & CHIP_EN & WRITE_EN;
@@ -212,7 +212,7 @@ writeBytes(uint start, const byte *data, uint len) {
         end = start; // failure
     }
     if (wasSerialOn) {
-      startSerial();
+        startSerial();
     }
     return end - start;
 }
@@ -235,7 +235,7 @@ printContents(uint start, uint end) {
     char buf[80];
     buf[0] = 0;
     char *p = buf;
-    for (uint i = start; i < end; ++i) {
+    for (uint i = start; i != end; ++i) {
         if (i % 16 == 0) {
             logSerial(buf);
             p = buf;
@@ -247,9 +247,9 @@ printContents(uint start, uint end) {
     }
     logSerial(buf);
     logSerial("\r\n");
-	if (wasSerialOn) {
+    if (wasSerialOn) {
         startSerial();
-	}
+    }
 }
 
 bool
@@ -296,7 +296,7 @@ actionLoad() {
         }
         if (writeBytes(start, page, lenPage) == 0) {
             delayMicroseconds(300);
-            logSerial("Error! Write timed out.\n");
+            logSerial("\r\nError! Write timed out.\n");
             return false;
         }
         delayMicroseconds(300);
