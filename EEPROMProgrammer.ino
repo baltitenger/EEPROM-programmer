@@ -163,7 +163,8 @@ pollData(byte data) {
         delayMicroseconds(3);
         PORTB = MASK & CHIP_EN & OUTPUT_EN;
         if (micros() - pollStart > WRITE_CYCLE_MICROS) {
-            return true;
+			logSerial("WARN: pollData timeout.\n");
+            return false;
         }
         delayMicroseconds(3);
     }
@@ -206,6 +207,7 @@ writeBytes(uint start, const byte *data, uint len) {
         PORTB = MASK & CHIP_EN;
         delayMicroseconds(3);
     }
+	pollToggle();
     if (pollData(*--data & 0x80)) {
         end = start; // failure
     }
