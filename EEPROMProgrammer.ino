@@ -132,10 +132,11 @@ readByte(uint address) {
 
 bool
 pollData(byte data) {
-    DDRD = 0x00; // Set IO pins as input
+    DDRD = 0x80; // Set IO 7 as input
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
+    delayMicroseconds(200);
     long pollStart = micros();
-    while (data ^ (PIND & 0x80)) {
+    while (data ^ digitalRead(7)) {
         PORTB = MASK & CHIP_EN;
         delayMicroseconds(3);
         PORTB = MASK & CHIP_EN & OUTPUT_EN;
@@ -149,9 +150,9 @@ pollData(byte data) {
 
 void
 pollToggle() {
-    DDRD = 0x00; // Set IO pins as input
+    DDRD = 0x40; // Set IO 6 as input
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
-    bool state = PIND & 0x40;
+    bool state = digitalRead(6);
     bool newState;
     int sameInARow = 0;
     while (sameInARow < TOGGLE_SAFE) {
@@ -159,7 +160,7 @@ pollToggle() {
         delayMicroseconds(3);
         PORTB = MASK & CHIP_EN & OUTPUT_EN;
         delayMicroseconds(3);
-        newState = PIND & 0x40;
+        newState = digitalRead(6);
         if (state ^ newState) {
             sameInARow = 0;
         } else {
@@ -248,11 +249,16 @@ actionLoad() {
         return false;
     }
     ccrc = crcs::crc8be32(len, ccrc);
+    skipWhitespace();
     byte crc = readHex(2);
     if (crc == ccrc) {
-        logSerial("OK");
+        Serial.println("\r\nOK. Start address and length set.");
     } else {
-        logSerial("\r\nError!\r\n");
+        Serial.print("\r\nError! Mismatching crc (");
+        Serial.print(crc);
+        Serial.print(" != ");
+        Serial.print(ccrc);
+        Serial.println(")");
         return false;
     }
     do {
@@ -270,22 +276,33 @@ actionLoad() {
         skipWhitespace();
         byte ccrc = crcs::crc8(page, page + lenPage);
         byte crc = readHex(2);
-        if (crc == ccrc) {
-            logSerial("\r\nOK, writing %0x bytes of data starting from %04x...\r\n", len, start);
-        } else {
-            logSerial("\r\nError!\r\n");
+        if (crc != ccrc) {
+            Serial.print("\r\nError! Mismatching crc (");
+            Serial.print(crc);
+            Serial.print(" != ");
+            Serial.print(ccrc);
+            Serial.println(")");
             return false;
         }
+        Serial.println();
+        Serial.end();
         if (writeBytes(start, page, lenPage) == 0) {
-            logSerial("Error.\r\n");
+            delayMicroseconds(300);
+            Serial.begin(BAUDRATE);
+            Serial.println("Error! Write timed out.");
             return false;
-        } else {
-            logSerial("OK\r\n");
         }
+        delayMicroseconds(300);
+        Serial.begin(BAUDRATE);
+        Serial.print("\r\nOK, written ");
+        Serial.print(lenPage);
+        Serial.print(" bytes of data starting from ");
+        Serial.print(start, HEX);
+        Serial.println(".");
         len -= lenPage;
         start += lenPage;
     } while (len > 0); 
-    logSerial("Done.\r\n");
+    Serial.println("Done.");
     return true;
 }
 
@@ -334,7 +351,7 @@ loop() {
         Serial.end();
         exit(0);
     } else {
-        Serial.println("Invalid action!");
+        Serial.println("Error! Invalid action.");
     }
     Serial.end();
 }
