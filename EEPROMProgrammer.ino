@@ -237,7 +237,7 @@ printContents(uint start, uint len) {
         if (start % 16 == 0) {
             logSerial(buf);
             p = buf;
-            p += sprintf(p, "\r\n%08x:", start);
+            p += sprintf(p, "\r\n%04x:", start);
         } else if (start % 8 == 0) {
             *p++ = ' ';
         }
@@ -255,13 +255,13 @@ bool
 actionLoad() {
     startSerial();
     skipWhitespace();
-    int start = readHex(4);
+    long start = readHex(4);
     if (start == -1) {
         return false;
     }
     byte ccrc = crcs::crc8be16(start);
     skipWhitespace();
-    int len = readHex(4);
+    long len = readHex(4);
     if (len == -1) {
         return false;
     }
@@ -275,7 +275,7 @@ actionLoad() {
         return false;
     }
     do {
-        uint lenPage = min(len, (start / 0x40 + 1) * 0x40 - start);
+        uint lenPage = min(len, 0x40 - (start % 0x40));
         byte page[64];
         byte *p = page;
         for (uint i = 0; i < lenPage; ++i) {
@@ -287,8 +287,8 @@ actionLoad() {
             *p++ = next;
         }
         skipWhitespace();
-        byte ccrc = crcs::crc8(page, page + lenPage);
-        byte crc = readHex(2);
+        ccrc = crcs::crc8(page, page + lenPage);
+        crc = readHex(2);
         if (crc != ccrc) {
             logSerial("\r\nError! Mismatching crc (%02x != %02x)\n", crc, ccrc);
             return false;
@@ -297,7 +297,7 @@ actionLoad() {
             logSerial("\r\nError! Write timed out.\n");
             return false;
         }
-        logSerial("\r\nOK, written %d bytes of data starting from %08x.\n", lenPage, start);
+        logSerial("\r\nOK, written %d bytes of data starting from %04x.\n", lenPage, start);
         len -= lenPage;
         start += lenPage;
     } while (len > 0); 

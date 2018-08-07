@@ -19,6 +19,7 @@ crc8(byte b, byte crc = 0x00) {
   return crc;
 }
 
+#if 0
 static byte
 crc8be32(uint32_t u, byte crc = 0x00) {
   crc = crc8(static_cast<byte>((u >> 24) & 0xff), crc);
@@ -27,6 +28,7 @@ crc8be32(uint32_t u, byte crc = 0x00) {
   crc = crc8(static_cast<byte>(u & 0xff), crc);
   return crc;
 }
+#endif
 
 static byte
 crc8be16(uint16_t u, byte crc = 0x00) {
