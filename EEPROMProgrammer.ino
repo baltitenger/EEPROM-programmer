@@ -132,10 +132,11 @@ readByte(uint address) {
 
 bool
 pollData(byte data) {
-    DDRD = 0x00; // Set IO pins as input
+    DDRD = 0x80; // Set IO 7 as input
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
+    delayMicroseconds(200);
     long pollStart = micros();
-    while (data ^ (PIND & 0x80)) {
+    while (data ^ digitalRead(7)) {
         PORTB = MASK & CHIP_EN;
         delayMicroseconds(3);
         PORTB = MASK & CHIP_EN & OUTPUT_EN;
@@ -149,9 +150,9 @@ pollData(byte data) {
 
 void
 pollToggle() {
-    DDRD = 0x00; // Set IO pins as input
+    DDRD = 0x40; // Set IO 6 as input
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
-    bool state = PIND & 0x40;
+    bool state = digitalRead(6);
     bool newState;
     int sameInARow = 0;
     while (sameInARow < TOGGLE_SAFE) {
@@ -159,7 +160,7 @@ pollToggle() {
         delayMicroseconds(3);
         PORTB = MASK & CHIP_EN & OUTPUT_EN;
         delayMicroseconds(3);
-        newState = PIND & 0x40;
+        newState = digitalRead(6);
         if (state ^ newState) {
             sameInARow = 0;
         } else {
@@ -251,7 +252,7 @@ actionLoad() {
     skipWhitespace();
     byte crc = readHex(2);
     if (crc == ccrc) {
-        Serial.println("\r\nOK. Address and length set.");
+        Serial.println("\r\nOK. Start address and length set.");
     } else {
         Serial.print("\r\nError! Mismatching crc (");
         Serial.print(crc);
@@ -275,13 +276,7 @@ actionLoad() {
         skipWhitespace();
         byte ccrc = crcs::crc8(page, page + lenPage);
         byte crc = readHex(2);
-        if (crc == ccrc) {
-            Serial.print("\r\nOK, writing ");
-            Serial.print(len);
-            Serial.print(" bytes of data starting from ");
-            Serial.print(start, HEX);
-            Serial.println("...");
-        } else {
+        if (crc != ccrc) {
             Serial.print("\r\nError! Mismatching crc (");
             Serial.print(crc);
             Serial.print(" != ");
@@ -289,14 +284,21 @@ actionLoad() {
             Serial.println(")");
             return false;
         }
+        Serial.println();
         Serial.end();
         if (writeBytes(start, page, lenPage) == 0) {
+            delayMicroseconds(300);
             Serial.begin(BAUDRATE);
             Serial.println("Error! Write timed out.");
             return false;
         }
+        delayMicroseconds(300);
         Serial.begin(BAUDRATE);
-        Serial.println("OK. Write complete.");
+        Serial.print("\r\nOK, written ");
+        Serial.print(lenPage);
+        Serial.print(" bytes of data starting from ");
+        Serial.print(start, HEX);
+        Serial.println(".");
         len -= lenPage;
         start += lenPage;
     } while (len > 0); 
