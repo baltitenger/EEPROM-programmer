@@ -28,42 +28,13 @@ const byte OUTPUT_EN = ~0x02;
 const byte CHIP_EN = ~0x04;
 const byte MASK = 0x07; // PORTB
 
-static bool isSerialOn = false;
-
-static bool
-startSerial() {
-    if (isSerialOn) {
-        return true;
-    }
-    isSerialOn = true;
-    PORTB = MASK & CHIP_EN;
-    delayMicroseconds(500);
-    Serial.begin(BAUDRATE);
-    return false;
-}
-
-static bool
-stopSerial() {
-    if (!isSerialOn) {
-        return false;
-    }
-    isSerialOn = false;
-    Serial.end();
-    delayMicroseconds(500);
-    return true;
-}
-
 static void
 logSerial(const char *format, ...) {
     static char buf[256];
     va_list argptr;
     va_start(argptr, format);
     vsnprintf(buf, sizeof(buf), format, argptr);
-    bool wasSerialOn = startSerial();
     Serial.print(buf);
-    if (!wasSerialOn) {
-        stopSerial();
-    }
 }
 
 void
@@ -140,22 +111,34 @@ setAddress(uint address) {
 }
 
 byte
+readIOPins() {
+    DDRC &= 0b11100111;
+    DDRD &= 0b00000011;
+    byte res = (PINC >> 3) & 0b11;
+    res |= PIND & 0b11111100;
+    return res;
+}
+
+void
+writeIOPins(byte toWrite) {
+    DDRC |= 0b00011000;
+    DDRD |= 0b11111100;
+    byte twc = (toWrite & 0b11) << 3;
+    PORTC ^= (twc ^ PORTC) & 0b00011000;
+    PORTD ^= (toWrite ^ PORTD) & 0b11111100;
+}
+
+byte
 readByte(uint address) {
-    bool wasSerialOn = stopSerial();
-    DDRD = 0x00; // Set IO pins as input
     setAddress(address);
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
     delayMicroseconds(3);
-    if (wasSerialOn) {
-        startSerial();
-    }
-    return PIND;
+    return readIOPins();;
 }
 
 bool
 pollData(byte data) {
-    DDRD = 0x80; // Set IO 7 as input
-    // ??? pinMode(7, INPUT);
+    pinMode(7, INPUT);
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
     long pollStart = micros();
     while (data ^ digitalRead(7)) {
@@ -173,7 +156,7 @@ pollData(byte data) {
 
 void
 pollToggle() {
-    DDRD = 0x40; // Set IO 6 as input
+    pinMode(6, INPUT);
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
     bool state = digitalRead(6);
     bool newState;
@@ -195,24 +178,19 @@ pollToggle() {
 
 uint
 writeBytes(uint start, const byte *data, uint len) {
-    bool wasSerialOn = stopSerial();
-    DDRD = 0xFF;
     PORTB = MASK & CHIP_EN;
     uint end = min(start + len, (start / 0x40 + 1) * 0x40);
     for (uint i = start; i != end; ++i) {
         setAddress(i);
-        PORTD = *data++;
+        writeIOPins(*data++);
         PORTB = MASK & CHIP_EN & WRITE_EN;
         delayMicroseconds(3);
         PORTB = MASK & CHIP_EN;
         delayMicroseconds(3);
     }
-	pollToggle();
+    pollToggle();
     if (pollData(*--data & 0x80)) {
         end = start; // failure
-    }
-    if (wasSerialOn) {
-        startSerial();
     }
     return end - start;
 }
@@ -229,7 +207,6 @@ writeBulk(uint start, const byte *data, uint len) {
 
 void
 printContents(uint start, uint len) {
-    bool wasSerialOn = stopSerial();
     start &= ~ 0x0f;
     uint end = start + ((len + 15) & ~ 0x0f);
     char buf[80];
@@ -248,14 +225,10 @@ printContents(uint start, uint len) {
     } while (start != end);
     logSerial(buf);
     logSerial("\r\n");
-    if (wasSerialOn) {
-        startSerial();
-    }
 }
 
 bool
 actionLoad() {
-    startSerial();
     skipWhitespace();
     long start = readHex(4);
     if (start == -1) {
@@ -309,7 +282,6 @@ actionLoad() {
 
 bool
 actionPrint() {
-    startSerial();
     skipWhitespace();
     long int start = readHex(8);
     if (start == -1) {
@@ -328,7 +300,7 @@ void
 setup() {
     DDRB = 0xFF; // Set pin mode to output
     PORTB = MASK & CHIP_EN; // WE = 1, OE = 1; CE = 1, leave shift register pins as 0
-    startSerial();
+    Serial.begin(115200);
     logSerial("\r\nResetting...\r\n");
 }
 
@@ -341,7 +313,6 @@ step: 4
 void
 loop() {
     PORTB = MASK & CHIP_EN;
-    startSerial();
     logSerial("Ready\n");
     skipWhitespace();
     String action = readWord();
@@ -351,7 +322,7 @@ loop() {
         actionPrint();
     } else if (action == "EXIT" || action == "exit") {
         logSerial("Bye!\n");
-        stopSerial();
+        Serial.end();
         exit(0);
     } else {
         logSerial("Error! Invalid action.\n");
