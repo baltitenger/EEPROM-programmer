@@ -7,10 +7,11 @@
 using uint = unsigned int;
 using ulong = unsigned long;
 
+static constexpr const bool PollDataTimeoutIgnored = false;
 // 2 shift registers used for address pins and output enable
-const int SHIFT_LATCH = 11;
-const int SHIFT_CLK = 12;
-const int SHIFT_DATA = 13;
+static constexpr const int SHIFT_LATCH = 11;
+static constexpr const int SHIFT_CLK = 12;
+static constexpr const int SHIFT_DATA = 13;
 
 // Data direction: DDRD (0 = input; 1 = output)
 // Data out: PORTD
@@ -18,15 +19,14 @@ const int SHIFT_DATA = 13;
 
 // Write enable, Output enable, Chip enable: set PORTB, always set higher bits to 0
 
-const long WRITE_CYCLE_MICROS = 10000;
-const int TOGGLE_SAFE = 5;
+static constexpr const long WRITE_CYCLE_MILLIS = 15;
 
-const long int BAUDRATE = 115200;
+static constexpr const long int BAUDRATE = 115200;
 
-const byte WRITE_EN = ~0x01;
-const byte OUTPUT_EN = ~0x02;
-const byte CHIP_EN = ~0x04;
-const byte MASK = 0x07; // PORTB
+static constexpr const byte WRITE_EN = ~0x01;
+static constexpr const byte OUTPUT_EN = ~0x02;
+static constexpr const byte CHIP_EN = ~0x04;
+static constexpr const byte MASK = 0x07; // PORTB
 
 static void
 logSerial(const char *format, ...) {
@@ -137,61 +137,45 @@ readByte(uint address) {
 }
 
 bool
-pollData(byte data) {
-    pinMode(7, INPUT);
-    PORTB = MASK & CHIP_EN & OUTPUT_EN;
-    long pollStart = micros();
-    while (data ^ digitalRead(7)) {
-        PORTB = MASK & CHIP_EN;
-        delayMicroseconds(3);
+pollData(byte lastByteRead) {
+    ulong pollEnd = millis() + WRITE_CYCLE_MILLIS;
+//  logSerial("pollData_PORT: lastByteRead: %02x, now: %lu, pollEnd: %lu\n", lastByteRead, millis(), pollEnd);
+    do {
         PORTB = MASK & CHIP_EN & OUTPUT_EN;
-        if (micros() - pollStart > WRITE_CYCLE_MICROS) {
-			logSerial("WARN: pollData timeout.\n");
-            return false;
+        if (readIOPins() == lastByteRead) {
+//          logSerial("pollData_PORT: lastByteRead: %02x, data: %d, now: %lu, pollEnd: %lu, length: %lu\n", lastByteRead, readIOPins(), millis(), pollEnd, millis() - (pollEnd - WRITE_CYCLE_MILLIS));
+            return true;
         }
-        delayMicroseconds(3);
-    }
+        PORTB = MASK & CHIP_EN;
+        delayMicroseconds(1);
+    } while (millis() < pollEnd);
+//  logSerial("pollData_PORT: lastByteRead: %02x, data: %d, now: %lu, pollEnd: %lu\n", lastByteRead, readIOPins(), millis(), pollEnd);
     return false;
-}
-
-void
-pollToggle() {
-    pinMode(6, INPUT);
-    PORTB = MASK & CHIP_EN & OUTPUT_EN;
-    bool state = digitalRead(6);
-    bool newState;
-    int sameInARow = 0;
-    while (sameInARow < TOGGLE_SAFE) {
-        PORTB = MASK & CHIP_EN;
-        delayMicroseconds(3);
-        PORTB = MASK & CHIP_EN & OUTPUT_EN;
-        delayMicroseconds(3);
-        newState = digitalRead(6);
-        if (state ^ newState) {
-            sameInARow = 0;
-        } else {
-            ++sameInARow;
-        }
-        state = newState;
-    }
 }
 
 uint
 writeBytes(uint start, const byte *data, uint len) {
     PORTB = MASK & CHIP_EN;
     uint end = min(start + len, (start / 0x40 + 1) * 0x40);
+    ulong startStamp = millis();
     for (uint i = start; i != end; ++i) {
         setAddress(i);
         writeIOPins(*data++);
         PORTB = MASK & CHIP_EN & WRITE_EN;
-        delayMicroseconds(3);
+        delayMicroseconds(1);
         PORTB = MASK & CHIP_EN;
-        delayMicroseconds(3);
+        delayMicroseconds(1);
     }
-    pollToggle();
-    if (pollData(*--data & 0x80)) {
-        end = start; // failure
+    logSerial("write: %lu\n", millis() - startStamp);
+    if (!pollData(*--data)) {
+        if (PollDataTimeoutIgnored) {
+            logSerial("WARN: pollData timeout.\n");
+        } else {
+            logSerial("ERROR: pollData timeout.\n");
+            end = start; // failure
+        }
     }
+    logSerial("total: %lu\n", millis() - startStamp);
     return end - start;
 }
 
@@ -283,16 +267,17 @@ actionLoad() {
 bool
 actionPrint() {
     skipWhitespace();
-    long int start = readHex(8);
+    long int start = readHex(4);
     if (start == -1) {
         return false;
     }
     skipWhitespace();
-    long int len = readHex(8);
+    long int len = readHex(4);
     if (len == -1) {
         return false;
     }
     printContents(start, len);
+    logSerial("\r\nOK\n");
     return true;
 }
 
