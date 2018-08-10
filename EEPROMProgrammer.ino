@@ -164,7 +164,6 @@ static uint
 writeBytes(uint start, const byte *data, uint len) {
     setEepromPins();
     uint end = min(start + len, (start / 0x40 + 1) * 0x40);
-    ulong startStamp = millis();
     for (uint i = start; i != end; ++i) {
         setAddress(i);
         writeIOPins(*data++);
@@ -173,7 +172,6 @@ writeBytes(uint start, const byte *data, uint len) {
         setEepromPins();
         delayMicroseconds(1);
     }
-    logSerial("write: %lu\n", millis() - startStamp);
     if (!pollData(*--data)) {
         if (PollDataTimeoutIgnored) {
             logSerial("WARN: pollData timeout.\n");
@@ -182,7 +180,6 @@ writeBytes(uint start, const byte *data, uint len) {
             end = start; // failure
         }
     }
-    logSerial("total: %lu\n", millis() - startStamp);
     return end - start;
 }
 
