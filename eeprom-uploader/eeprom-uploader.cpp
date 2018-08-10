@@ -63,7 +63,7 @@ static bool printOnly = false;
 
 static void
 help() {
-  std::cerr << "eeprom-uploader [-s <serial>] [-b <baud-rate>] [-w <write offset>] [-c <write-count>] [-r <read-offset>] [-i] <input-file>\n";
+  std::cerr << "eeprom-uploader [-q] [-p] [-s <serial>] [-b <baud-rate>] [-w <write offset>] [-c <write-count>] [-r <read-offset>] [-i] <input-file>\n";
 }
 
 template <typename T>
