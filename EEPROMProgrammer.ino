@@ -19,12 +19,12 @@ static constexpr const long WRITE_CYCLE_MILLIS = 15;
 
 static constexpr const long int BAUDRATE = 115200;
 
-enum EnabledPin {
+enum EepromPin {
     None = 0,
-    Write = 0b01,
-    Output = 0b10,
+    WriteEnable = 0b01,
+    OutputEnable = 0b10,
 };
-static constexpr const byte EN_MASK = EnabledPin::Output | EnabledPin::Write;
+static constexpr const byte EepromPinMask = EepromPin::OutputEnable | EepromPin::WriteEnable;
 
 static void
 logSerial(const char *format, ...) {
@@ -101,8 +101,8 @@ readWord() {
 }
 
 static void
-setEnabled(EnabledPin pins = EnabledPin::None) {
-    PORTB ^= (PORTB ^ ~pins) & EN_MASK;
+setEepromPins(EepromPin pins = EepromPin::None) {
+    PORTB ^= (PORTB ^ ~pins) & EepromPinMask;
 }
 
 static void
@@ -138,7 +138,7 @@ writeIOPins(byte toWrite) {
 static byte
 readByte(uint address) {
     setAddress(address);
-    setEnabled(EnabledPin::Output);
+    setEepromPins(EepromPin::OutputEnable);
     delayMicroseconds(3);
     return readIOPins();;
 }
@@ -148,12 +148,12 @@ pollData(byte lastByteRead) {
     ulong pollEnd = millis() + WRITE_CYCLE_MILLIS;
 //  logSerial("pollData_PORT: lastByteRead: %02x, now: %lu, pollEnd: %lu\n", lastByteRead, millis(), pollEnd);
     do {
-        setEnabled(EnabledPin::Output);
+        setEepromPins(EepromPin::OutputEnable);
         if (readIOPins() == lastByteRead) {
 //          logSerial("pollData_PORT: lastByteRead: %02x, data: %d, now: %lu, pollEnd: %lu, length: %lu\n", lastByteRead, readIOPins(), millis(), pollEnd, millis() - (pollEnd - WRITE_CYCLE_MILLIS));
             return true;
         }
-        setEnabled();
+        setEepromPins();
         delayMicroseconds(1);
     } while (millis() < pollEnd);
 //  logSerial("pollData_PORT: lastByteRead: %02x, data: %d, now: %lu, pollEnd: %lu\n", lastByteRead, readIOPins(), millis(), pollEnd);
@@ -162,15 +162,15 @@ pollData(byte lastByteRead) {
 
 static uint
 writeBytes(uint start, const byte *data, uint len) {
-    setEnabled();
+    setEepromPins();
     uint end = min(start + len, (start / 0x40 + 1) * 0x40);
     ulong startStamp = millis();
     for (uint i = start; i != end; ++i) {
         setAddress(i);
         writeIOPins(*data++);
-        setEnabled(EnabledPin::Write);
+        setEepromPins(EepromPin::WriteEnable);
         delayMicroseconds(1);
-        setEnabled();
+        setEepromPins();
         delayMicroseconds(1);
     }
     logSerial("write: %lu\n", millis() - startStamp);
@@ -295,7 +295,7 @@ actionPrint() {
 void
 setup() {
     DDRB = 0xff; // Set pin mode to output
-    setEnabled();
+    setEepromPins();
     Serial.begin(115200);
     logSerial("\r\nResetting...\r\n");
     SPI.begin();
@@ -309,7 +309,7 @@ step: 4
 
 void
 loop() {
-    setEnabled();
+    setEepromPins();
     logSerial("Ready\n");
     skipWhitespace();
     String action = readWord();
