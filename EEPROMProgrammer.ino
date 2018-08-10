@@ -194,6 +194,7 @@ printContents(uint start, uint len) {
     char buf[80];
     buf[0] = 0;
     char *p = buf;
+    byte crc = 0;
     do {
         if (start % 16 == 0) {
             logSerial(buf);
@@ -202,11 +203,13 @@ printContents(uint start, uint len) {
         } else if (start % 8 == 0) {
             *p++ = ' ';
         }
-        p += sprintf(p, " %02x", readByte(start));
+        byte b = readByte(start);
+        crc = crcs::crc8(b, crc);
+        p += sprintf(p, " %02x", b);
         ++start;
     } while (start != end);
     logSerial(buf);
-    logSerial("\r\n");
+    logSerial("\r\n\r\nOK: crc: %02x\n", crc);
 }
 
 static bool
@@ -275,7 +278,6 @@ actionPrint() {
         return false;
     }
     printContents(start, len);
-    logSerial("\r\nOK\n");
     return true;
 }
 
