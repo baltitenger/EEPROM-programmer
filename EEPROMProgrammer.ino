@@ -8,21 +8,19 @@ using uint = unsigned int;
 using ulong = unsigned long;
 
 static constexpr const bool PollDataTimeoutIgnored = false;
-// 2 shift registers used for address pins and output enable
+// 2 shift registers used for address pins
 static constexpr const int SHIFT_LATCH = 11;
 static constexpr const int SHIFT_CLK = 12;
 static constexpr const int SHIFT_DATA = 13;
-
-// Data direction: DDRD (0 = input; 1 = output)
-// Data out: PORTD
-// Data in: PIND
-
-// Write enable, Output enable, Chip enable: set PORTB, always set higher bits to 0
 
 static constexpr const long WRITE_CYCLE_MILLIS = 15;
 
 static constexpr const long int BAUDRATE = 115200;
 
+// Data direction: DDRD (0 = input; 1 = output)
+// Data out: PORTD
+// Data in: PIND
+// Write enable, Output enable, Chip enable: set PORTB, always set higher bits to 0
 static constexpr const byte WRITE_EN = ~0x01;
 static constexpr const byte OUTPUT_EN = ~0x02;
 static constexpr const byte CHIP_EN = ~0x04;
@@ -37,7 +35,7 @@ logSerial(const char *format, ...) {
     Serial.print(buf);
 }
 
-void
+static void
 waitForSerial() {
     while (!Serial.available()) {
         delayMicroseconds(1);
@@ -45,7 +43,7 @@ waitForSerial() {
     return;
 }
 
-void
+static void
 skipWhitespace() {
     while (true) {
         waitForSerial();
@@ -57,7 +55,7 @@ skipWhitespace() {
     }
 }
 
-int
+static int
 hexToBin(const char hex) {
     if ('0' <= hex && hex <= '9') {
         return hex - '0';
@@ -70,7 +68,7 @@ hexToBin(const char hex) {
     }
 }
 
-long
+static long
 readHex(uint maxSize) {
     long res = 0;
     for (uint i = 0; i < maxSize; ++i) {
@@ -88,7 +86,7 @@ readHex(uint maxSize) {
     return res;
 }
 
-String
+static String
 readWord() {
     String res = "";
     while (true) {
@@ -102,7 +100,7 @@ readWord() {
     return res;
 }
 
-void
+static void
 setAddress(uint address) {
     digitalWrite(SHIFT_LATCH, LOW);
     shiftOut(SHIFT_DATA, SHIFT_CLK, MSBFIRST, address >> 8 & 0xFF);
@@ -110,7 +108,7 @@ setAddress(uint address) {
     digitalWrite(SHIFT_LATCH, HIGH);
 }
 
-byte
+static byte
 readIOPins() {
     DDRC &= 0b11100111;
     DDRD &= 0b00000011;
@@ -119,7 +117,7 @@ readIOPins() {
     return res;
 }
 
-void
+static void
 writeIOPins(byte toWrite) {
     DDRC |= 0b00011000;
     DDRD |= 0b11111100;
@@ -128,7 +126,7 @@ writeIOPins(byte toWrite) {
     PORTD ^= (toWrite ^ PORTD) & 0b11111100;
 }
 
-byte
+static byte
 readByte(uint address) {
     setAddress(address);
     PORTB = MASK & CHIP_EN & OUTPUT_EN;
@@ -136,7 +134,7 @@ readByte(uint address) {
     return readIOPins();;
 }
 
-bool
+static bool
 pollData(byte lastByteRead) {
     ulong pollEnd = millis() + WRITE_CYCLE_MILLIS;
 //  logSerial("pollData_PORT: lastByteRead: %02x, now: %lu, pollEnd: %lu\n", lastByteRead, millis(), pollEnd);
@@ -153,7 +151,7 @@ pollData(byte lastByteRead) {
     return false;
 }
 
-uint
+static uint
 writeBytes(uint start, const byte *data, uint len) {
     PORTB = MASK & CHIP_EN;
     uint end = min(start + len, (start / 0x40 + 1) * 0x40);
@@ -179,7 +177,7 @@ writeBytes(uint start, const byte *data, uint len) {
     return end - start;
 }
 
-void
+static void
 writeBulk(uint start, const byte *data, uint len) {
     uint written = 0;
     do {
@@ -189,7 +187,7 @@ writeBulk(uint start, const byte *data, uint len) {
     } while ((written = writeBytes(start, data, len)) < len); 
 }
 
-void
+static void
 printContents(uint start, uint len) {
     start &= ~ 0x0f;
     uint end = start + ((len + 15) & ~ 0x0f);
@@ -211,7 +209,7 @@ printContents(uint start, uint len) {
     logSerial("\r\n");
 }
 
-bool
+static bool
 actionLoad() {
     skipWhitespace();
     long start = readHex(4);
@@ -264,7 +262,7 @@ actionLoad() {
     return true;
 }
 
-bool
+static bool
 actionPrint() {
     skipWhitespace();
     long int start = readHex(4);
@@ -281,10 +279,12 @@ actionPrint() {
     return true;
 }
 
+// ------------------------------------------------------------------------ //
+
 void
 setup() {
     DDRB = 0xFF; // Set pin mode to output
-    PORTB = MASK & CHIP_EN; // WE = 1, OE = 1; CE = 1, leave shift register pins as 0
+    PORTB = MASK & CHIP_EN; // WE = 1, OE = 1; CE = 0, leave shift register pins as 0
     Serial.begin(115200);
     logSerial("\r\nResetting...\r\n");
 }
