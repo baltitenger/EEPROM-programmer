@@ -2,6 +2,7 @@
 // vim: set syntax=arduino:
 
 #include <stdarg.h>
+#include <SPI.h>
 #include "lib/crcs.hpp"
 
 using uint = unsigned int;
@@ -9,9 +10,7 @@ using ulong = unsigned long;
 
 static constexpr const bool PollDataTimeoutIgnored = false;
 // 2 shift registers used for address pins and output enable
-static constexpr const int SHIFT_LATCH = 11;
-static constexpr const int SHIFT_CLK = 12;
-static constexpr const int SHIFT_DATA = 13;
+static constexpr const int SHIFT_LATCH = 10;
 
 // Data direction: DDRD (0 = input; 1 = output)
 // Data out: PORTD
@@ -23,10 +22,12 @@ static constexpr const long WRITE_CYCLE_MILLIS = 15;
 
 static constexpr const long int BAUDRATE = 115200;
 
-static constexpr const byte WRITE_EN = ~0x01;
-static constexpr const byte OUTPUT_EN = ~0x02;
-static constexpr const byte CHIP_EN = ~0x04;
-static constexpr const byte MASK = 0x07; // PORTB
+enum EnabledPin {
+    None = 0,
+    Write = 0b01,
+    Output = 0b10,
+};
+static constexpr const byte EN_MASK = EnabledPin::Output | EnabledPin::Write;
 
 static void
 logSerial(const char *format, ...) {
@@ -103,10 +104,21 @@ readWord() {
 }
 
 void
+setEnabled(EnabledPin pins = EnabledPin::None) {
+    PORTB ^= (PORTB ^ ~pins) & EN_MASK;
+}
+
+void
 setAddress(uint address) {
     digitalWrite(SHIFT_LATCH, LOW);
-    shiftOut(SHIFT_DATA, SHIFT_CLK, MSBFIRST, address >> 8 & 0xFF);
-    shiftOut(SHIFT_DATA, SHIFT_CLK, MSBFIRST, address & 0xFF);
+#if 0
+    shiftOut(11, 13, MSBFIRST, address >> 8 & 0xFF);
+    shiftOut(11, 13, MSBFIRST, address & 0xFF);
+#else
+    SPI.transfer16(address & 0x7fff);
+//    SPI.transfer(address >> 8 & 0xff);
+//    SPI.transfer(address & 0xff);
+#endif
     digitalWrite(SHIFT_LATCH, HIGH);
 }
 
@@ -131,7 +143,7 @@ writeIOPins(byte toWrite) {
 byte
 readByte(uint address) {
     setAddress(address);
-    PORTB = MASK & CHIP_EN & OUTPUT_EN;
+    setEnabled(EnabledPin::Output);
     delayMicroseconds(3);
     return readIOPins();;
 }
@@ -141,12 +153,12 @@ pollData(byte lastByteRead) {
     ulong pollEnd = millis() + WRITE_CYCLE_MILLIS;
 //  logSerial("pollData_PORT: lastByteRead: %02x, now: %lu, pollEnd: %lu\n", lastByteRead, millis(), pollEnd);
     do {
-        PORTB = MASK & CHIP_EN & OUTPUT_EN;
+        setEnabled(EnabledPin::Output);
         if (readIOPins() == lastByteRead) {
 //          logSerial("pollData_PORT: lastByteRead: %02x, data: %d, now: %lu, pollEnd: %lu, length: %lu\n", lastByteRead, readIOPins(), millis(), pollEnd, millis() - (pollEnd - WRITE_CYCLE_MILLIS));
             return true;
         }
-        PORTB = MASK & CHIP_EN;
+        setEnabled();
         delayMicroseconds(1);
     } while (millis() < pollEnd);
 //  logSerial("pollData_PORT: lastByteRead: %02x, data: %d, now: %lu, pollEnd: %lu\n", lastByteRead, readIOPins(), millis(), pollEnd);
@@ -155,15 +167,15 @@ pollData(byte lastByteRead) {
 
 uint
 writeBytes(uint start, const byte *data, uint len) {
-    PORTB = MASK & CHIP_EN;
+    setEnabled();
     uint end = min(start + len, (start / 0x40 + 1) * 0x40);
     ulong startStamp = millis();
     for (uint i = start; i != end; ++i) {
         setAddress(i);
         writeIOPins(*data++);
-        PORTB = MASK & CHIP_EN & WRITE_EN;
+        setEnabled(EnabledPin::Write);
         delayMicroseconds(1);
-        PORTB = MASK & CHIP_EN;
+        setEnabled();
         delayMicroseconds(1);
     }
     logSerial("write: %lu\n", millis() - startStamp);
@@ -283,10 +295,12 @@ actionPrint() {
 
 void
 setup() {
-    DDRB = 0xFF; // Set pin mode to output
-    PORTB = MASK & CHIP_EN; // WE = 1, OE = 1; CE = 1, leave shift register pins as 0
+    DDRB |= 0xff; // Set pin mode to output
+    setEnabled();
     Serial.begin(115200);
     logSerial("\r\nResetting...\r\n");
+    SPI.begin();
+    setAddress(0xaaaa);
 }
 
 /*
@@ -297,7 +311,7 @@ step: 4
 
 void
 loop() {
-    PORTB = MASK & CHIP_EN;
+    setEnabled();
     logSerial("Ready\n");
     skipWhitespace();
     String action = readWord();
