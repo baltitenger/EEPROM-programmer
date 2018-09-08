@@ -2,10 +2,12 @@ CXX=clang++
 CXXFLAGS=-std=gnu++17 -stdlib=libc++ -Wall -O2
 LDFLAGS=-stdlib=libc++ -lc++abi -lboost_system -pthread 
 LD=clang++
+BUILD_DIR=build
 
-all: eeprom-uploader
+all: $(BUILD_DIR)/eeprom-uploader
 
-eeprom-uploader: eeprom-uploader.o
+$(BUILD_DIR)/eeprom-uploader: main.cpp
+	@mkdir -p $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $<
 
 clean:

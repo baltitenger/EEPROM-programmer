@@ -1,6 +1,8 @@
 #ifndef CRCS_HPP_h987nx7rf91z9p8m
 #define CRCS_HPP_h987nx7rf91z9p8m
 
+using byte = unsigned char;
+
 namespace crcs {
 
 constexpr const byte Crc8Gen = 0x1d;

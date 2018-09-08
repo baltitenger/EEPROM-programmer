@@ -11,9 +11,9 @@
 #include <boost/format.hpp>
 
 #define USE_BITWISE_CRC
-#include "serial.hpp"
+#include "../lib/serial.hpp"
 #ifdef USE_BITWISE_CRC
-#include "crcs.hpp"
+#include "../lib/crcs.hpp"
 namespace crc = crcs;
 #else
 #include "crc.hpp"

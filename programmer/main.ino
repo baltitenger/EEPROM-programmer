@@ -1,6 +1,6 @@
 #include <stdarg.h>
 #include <SPI.h>
-#include "crcs.hpp"
+#include "../lib/crcs.hpp"
 
 using uint = unsigned int;
 using ulong = unsigned long;
