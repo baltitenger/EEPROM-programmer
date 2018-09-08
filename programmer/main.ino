@@ -1,9 +1,6 @@
-// vim: set filetype=cpp:
-// vim: set syntax=arduino:
-
 #include <stdarg.h>
 #include <SPI.h>
-#include "lib/crcs.hpp"
+#include "crcs.hpp"
 
 using uint = unsigned int;
 using ulong = unsigned long;
